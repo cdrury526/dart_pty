@@ -80,6 +80,7 @@ class TerminalTab {
     // escape sequence handling (zsh ZLE needs this).
     final env = Map<String, String>.from(Platform.environment);
     env['TERM'] = 'xterm-256color';
+    env['COLORTERM'] = 'truecolor';
 
     final pty = Pty.start(
       shell,
