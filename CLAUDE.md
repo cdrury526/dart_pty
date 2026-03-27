@@ -108,13 +108,17 @@ final pty = Pty.start('/bin/zsh',
 3. Use qdexcode to compare behavior against reference implementations
 4. Native C code can also log to stderr for low-level debugging: `#define PTY_DEBUG_STDERR 1`
 
-## Key Gotchas
+## Key Gotchas (verified during implementation)
 
 - **EIO on read = EOF** — when the slave PTY closes, the master gets EIO. Treat as clean EOF, not error.
 - **EINTR retry** — waitpid and read can be interrupted by signals. Always retry.
 - **TIOCSCTTY required** — must set controlling terminal in child or SIGWINCH won't be delivered on resize.
 - **Close inherited FDs** — child must close all FDs except 0/1/2 to prevent master fd leak.
 - **pty_error() is thread-local** — safe to call from any thread, returns last error for that thread.
+- **macOS App Sandbox must be disabled** — PTY allocation (tcsetattr) fails with EPERM under App Sandbox. Set `com.apple.security.app-sandbox` to `false` in both DebugProfile.entitlements and Release.entitlements.
+- **DynamicLibrary.process() on macOS** — CocoaPods compiles native plugins as frameworks linked into the app. Use `DynamicLibrary.process()` not `DynamicLibrary.open('libdart_pty.dylib')`. Linux/Windows still use `DynamicLibrary.open()`.
+- **TERM=xterm-256color required** — zsh's line editor (ZLE) needs TERM set correctly or backspace/cursor movement breaks. Callers MUST pass `environment: {'TERM': 'xterm-256color', ...inherited}` to `Pty.start()`.
+- **UTF-8 decoding** — PTY output is raw bytes. Use `Utf8Decoder(allowMalformed: true)` to convert to String before passing to Terminal.write(). Do NOT use `String.fromCharCodes()` — it treats each byte as a code point, breaking multi-byte characters (box drawing, emoji, CJK).
 - **No file over 600 lines** — split into focused, composable files.
 
 ## Build & Test
@@ -126,9 +130,18 @@ dart run ffigen
 # Run example app (macOS)
 cd example && flutter run -d macos
 
+# Build release
+cd example && flutter build macos
+
 # Analyze
 flutter analyze
 ```
+
+## Known Issues (to fix)
+
+- **Box-drawing characters render as thick bars** — dart_xterm renderer may be treating U+2500 range as double-width. Needs investigation in dart_xterm's painter.
+- **OSC title sequences leak `t:` to screen** — the `\x1b]0;title\x07` (set window title) handler may not be consuming the full sequence.
+- **Some text appears underlined** — SGR escape sequence interpretation issue in dart_xterm.
 
 ## Companion Package
 
