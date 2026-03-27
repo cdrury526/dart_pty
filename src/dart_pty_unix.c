@@ -117,6 +117,48 @@ static void pty_log(int level, const char *component, const char *fmt, ...) {
     post_log_to_dart(level, component, buf);
 }
 
+static int env_key_matches(const char *entry, const char *key) {
+    const size_t key_len = strlen(key);
+    return strncmp(entry, key, key_len) == 0 && entry[key_len] == '=';
+}
+
+static void log_spawn_environment(char *const *envp) {
+    if (!envp) {
+        pty_log(PTY_LOG_INFO, "spawn", "Environment: inheriting parent");
+        return;
+    }
+
+    static const char *keys[] = {
+        "TERM",
+        "COLORTERM",
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "FORCE_HYPERLINK",
+        "COLORFGBG",
+        "TERM_PROGRAM_BACKGROUND",
+        "LANG",
+        "LC_ALL",
+        "CI",
+        "TEAMCITY_VERSION",
+        "VTE_VERSION",
+    };
+
+    int entry_count = 0;
+    for (char *const *cursor = envp; *cursor; cursor++) {
+        entry_count++;
+    }
+    pty_log(PTY_LOG_INFO, "spawn", "Environment entries=%d", entry_count);
+
+    for (char *const *cursor = envp; *cursor; cursor++) {
+        for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
+            if (env_key_matches(*cursor, keys[i])) {
+                pty_log(PTY_LOG_INFO, "spawn", "env %s", *cursor);
+                break;
+            }
+        }
+    }
+}
+
 /* --- Dart API initialization --- */
 
 FFI_PLUGIN_EXPORT intptr_t pty_init_dart_api(void *data) {
@@ -351,6 +393,7 @@ static int spawn_macos(const PtyOptions *opts, int master, int slave,
     if (err != 0) { set_error("posix_spawnattr_setsigmask: %s", strerror(err)); goto done; }
 
     /* Retry on EINTR (node-pty pattern). */
+    log_spawn_environment((char *const *)opts->environment);
     do {
         err = posix_spawn(pid_out, opts->executable, &acts, &attrs,
                           (char *const *)opts->arguments,
@@ -467,6 +510,7 @@ FFI_PLUGIN_EXPORT PtyHandle *pty_create(const PtyOptions *opts,
 
     pty_log(PTY_LOG_INFO, "spawn", "Spawning %s (%dx%d)",
             opts->executable, opts->cols, opts->rows);
+    log_spawn_environment((char *const *)opts->environment);
 
     pid_t pid;
 #ifdef __APPLE__

@@ -45,11 +45,23 @@ enum PtyLogLevel {
 }
 
 /// Signature for the log callback.
-typedef PtyLogCallback = void Function(
-  PtyLogLevel level,
-  String component,
-  String message,
-);
+typedef PtyLogCallback =
+    void Function(PtyLogLevel level, String component, String message);
+
+const _spawnDebugEnvKeys = <String>{
+  'TERM',
+  'COLORTERM',
+  'TERM_PROGRAM',
+  'TERM_PROGRAM_VERSION',
+  'FORCE_HYPERLINK',
+  'COLORFGBG',
+  'TERM_PROGRAM_BACKGROUND',
+  'LANG',
+  'LC_ALL',
+  'CI',
+  'TEAMCITY_VERSION',
+  'VTE_VERSION',
+};
 
 // ---------------------------------------------------------------------------
 //  PtyException — structured error from native PTY operations
@@ -73,12 +85,7 @@ class PtyException implements Exception {
   final int? winError;
 
   /// Create a PtyException.
-  const PtyException(
-    this.message, {
-    this.syscall,
-    this.errno,
-    this.winError,
-  });
+  const PtyException(this.message, {this.syscall, this.errno, this.winError});
 
   @override
   String toString() {
@@ -118,7 +125,10 @@ DartPtyBindings _loadBindings(PtyLogCallback? onLog) {
   return _cachedBindings!;
 }
 
-void _ensureDartApiInitialized(DartPtyBindings bindings, PtyLogCallback? onLog) {
+void _ensureDartApiInitialized(
+  DartPtyBindings bindings,
+  PtyLogCallback? onLog,
+) {
   if (_dartApiInitialized) return;
   onLog?.call(PtyLogLevel.info, 'dart', 'Initializing Dart API DL');
   final result = bindings.pty_init_dart_api(NativeApi.initializeApiDLData);
@@ -174,13 +184,13 @@ class Pty {
     required ReceivePort? logPort,
     required PtyLogCallback? onLog,
     required StreamController<Uint8List> outputController,
-  })  : _bindings = bindings,
-        _handle = handle,
-        _outputPort = outputPort,
-        _exitPort = exitPort,
-        _logPort = logPort,
-        _onLog = onLog,
-        _outputController = outputController;
+  }) : _bindings = bindings,
+       _handle = handle,
+       _outputPort = outputPort,
+       _exitPort = exitPort,
+       _logPort = logPort,
+       _onLog = onLog,
+       _outputController = outputController;
 
   /// Spawn a child process in a new pseudo-terminal.
   ///
@@ -218,11 +228,7 @@ class Pty {
       });
     }
 
-    onLog?.call(
-      PtyLogLevel.info,
-      'dart',
-      'Calling pty_create for $executable',
-    );
+    onLog?.call(PtyLogLevel.info, 'dart', 'Calling pty_create for $executable');
 
     // Build native options.
     final opts = calloc<PtyOptions>();
@@ -250,6 +256,18 @@ class Pty {
       final entries = environment.entries
           .map((e) => '${e.key}=${e.value}')
           .toList();
+      onLog?.call(
+        PtyLogLevel.info,
+        'dart',
+        'Preparing ${entries.length} environment entries for pty_create',
+      );
+      for (final entry in entries) {
+        final separator = entry.indexOf('=');
+        final key = separator == -1 ? entry : entry.substring(0, separator);
+        if (_spawnDebugEnvKeys.contains(key)) {
+          onLog?.call(PtyLogLevel.info, 'dart', 'env $entry');
+        }
+      }
       envpPtr = calloc<Pointer<Char>>(entries.length + 1);
       for (var i = 0; i < entries.length; i++) {
         final p = entries[i].toNativeUtf8();
@@ -315,17 +333,16 @@ class Pty {
 
     // Wire up output stream.
     final outputController = StreamController<Uint8List>.broadcast();
-    outputPort.listen((message) {
-      if (message is Uint8List) {
-        outputController.add(message);
-      }
-    }, onError: (Object error) {
-      onLog?.call(
-        PtyLogLevel.error,
-        'dart',
-        'Output stream error: $error',
-      );
-    });
+    outputPort.listen(
+      (message) {
+        if (message is Uint8List) {
+          outputController.add(message);
+        }
+      },
+      onError: (Object error) {
+        onLog?.call(PtyLogLevel.error, 'dart', 'Output stream error: $error');
+      },
+    );
 
     // Wire up exit code.
     final pty = Pty._(
@@ -340,11 +357,7 @@ class Pty {
 
     exitPort.listen((message) {
       if (message is int && !pty._exitCompleter.isCompleted) {
-        onLog?.call(
-          PtyLogLevel.info,
-          'dart',
-          'Exit code received: $message',
-        );
+        onLog?.call(PtyLogLevel.info, 'dart', 'Exit code received: $message');
         pty._exitCompleter.complete(message);
       }
     });
@@ -381,11 +394,7 @@ class Pty {
   /// Resize the terminal to [rows] x [columns].
   void resize(int rows, int columns) {
     _ensureNotDisposed();
-    _onLog?.call(
-      PtyLogLevel.info,
-      'dart',
-      'resize: ${columns}x$rows',
-    );
+    _onLog?.call(PtyLogLevel.info, 'dart', 'resize: ${columns}x$rows');
     final result = _bindings.pty_resize(_handle, rows, columns);
     if (result < 0) {
       final errPtr = _bindings.pty_error();
@@ -402,11 +411,7 @@ class Pty {
   /// On Windows, 9 calls TerminateProcess; others send Ctrl+C.
   void kill([int signal = 15]) {
     _ensureNotDisposed();
-    _onLog?.call(
-      PtyLogLevel.info,
-      'dart',
-      'kill: signal=$signal',
-    );
+    _onLog?.call(PtyLogLevel.info, 'dart', 'kill: signal=$signal');
     final result = _bindings.pty_kill(_handle, signal);
     if (result < 0) {
       final errPtr = _bindings.pty_error();
