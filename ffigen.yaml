@@ -4,15 +4,39 @@ description: |
   Bindings for `src/dart_pty.h`.
 
   Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
-output: 'lib/dart_pty_bindings_generated.dart'
+output: 'lib/src/dart_pty_bindings_generated.dart'
 headers:
   entry-points:
     - 'src/dart_pty.h'
   include-directives:
     - 'src/dart_pty.h'
+    - 'src/include/dart_api_dl.h'
+
+compiler-opts:
+  - '-Isrc/include'
+
+functions:
+  include:
+    - 'pty_.*'
+    - 'Dart_InitializeApiDL'
+
+structs:
+  include:
+    - 'PtyOptions'
+    - 'PtySize'
+
+enums:
+  include:
+    - 'PtyLogLevel'
+
+typedefs:
+  include:
+    - 'pty_log_fn'
+
 preamble: |
   // ignore_for_file: always_specify_types
   // ignore_for_file: camel_case_types
+  // ignore_for_file: constant_identifier_names
   // ignore_for_file: non_constant_identifier_names
 comments:
   style: any

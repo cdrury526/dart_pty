@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__qdexcode__code",
+      "mcp__qdexcode__search",
+      "mcp__qdexcode__project",
+      "mcp__qdexcode__plan",
+      "mcp__qdexcode__help",
+      "mcp__qdexcode__projects",
+      "mcp__qdexcode__session"
+    ]
+  }
+}
